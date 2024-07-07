@@ -84,10 +84,9 @@ export const shopierCheckoutSession = catchAsyncErrors(
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
-      console.log(response.data); // Hata ayıklama için Shopier yanıtını logla
-
-      if (response.data.payment_url) {
-        res.status(200).json({ url: response.data.payment_url });
+      if (response.data) {
+        // Shopier tarafından dönen HTML form içeriği
+        res.status(200).send(response.data);
       } else {
         res.status(500).json({
           success: false,
