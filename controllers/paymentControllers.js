@@ -14,52 +14,52 @@ const SHOPIER_API_PASSWORD = process.env.SHOPIER_API_PASSWORD
 // Create Shopier checkout session => /api/v1/payment/checkout_session
 export const shopierCheckoutSession = catchAsyncErrors(
   async (req, res, next) => {
-    const body = req.body;
+    const body = req.body
 
-    const errors = [];
+    const errors = []
 
     // 2. Adım: Sipariş Edilen Ürünleri Kontrol Etme
     for (const item of body.orderItems) {
       const product = await Product.findOne({
         _id: item.product,
         'colors.productColorID': item.productColorID,
-      });
+      })
 
       if (!product) {
         errors.push({
           msg: `Ürün bulunamadı: ${item.name}`,
           color: '',
           productColorID: item.productColorID,
-        });
+        })
 
-        continue; // Bu ürün için işlemi atla ve bir sonraki ürüne geç
+        continue // Bu ürün için işlemi atla ve bir sonraki ürüne geç
       }
 
       const color = product.colors.find(
         (color) => color.productColorID === item.productColorID
-      );
+      )
 
       if (color.colorStock < item.amount) {
         errors.push({
           msg: `Stokta yeterli miktarda ürün yok: ${item.name}`,
           color: color.color,
           productColorID: item.productColorID,
-        });
+        })
       }
     }
 
     if (errors.length > 0) {
-      return res.status(400).json({ success: false, errors });
+      return res.status(400).json({ success: false, errors })
     }
 
     const totalAmount = body.orderItems.reduce(
       (acc, item) => acc + item.price * item.amount,
       0
-    );
+    )
 
-    const shippingInfo = body?.shippingInfo;
-    const shippingInvoiceInfo = body?.shippingInvoiceInfo;
-    const shippingInvoiceInfoString = JSON.stringify(shippingInvoiceInfo);
+    const shippingInfo = body?.shippingInfo
+    const shippingInvoiceInfo = body?.shippingInvoiceInfo
+    const shippingInvoiceInfoString = JSON.stringify(shippingInvoiceInfo)
 
     const requestData = {
       API_key: SHOPIER_API_USER,
@@ -77,28 +77,31 @@ export const shopierCheckoutSession = catchAsyncErrors(
       customer_zip_code: shippingInfo.zipCode,
       success_url: `${process.env.FRONTEND_URL}/me/orders/shopier-success`,
       fail_url: `${process.env.FRONTEND_URL}`,
-    };
+    }
 
     try {
       const response = await axios.post(SHOPIER_API_URL, requestData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
+      })
 
       if (response.data) {
-        // Shopier tarafından dönen HTML form içeriği
-        res.status(200).send(response.data);
+        console.log('Shopier response data:', response.data) // Hata ayıklama için log ekleyin
+        res.status(200).send(response.data)
       } else {
         res.status(500).json({
           success: false,
           message: 'Shopier ödeme bağlantısı oluşturulamadı.',
-        });
+        })
       }
     } catch (error) {
-      console.error('Shopier API Error: ', error.response ? error.response.data : error.message); // Hata ayıklama için logla
-      res.status(500).json({ success: false, message: error.message });
+      console.error(
+        'Shopier API Error: ',
+        error.response ? error.response.data : error.message
+      ) // Hata ayıklama için logla
+      res.status(500).json({ success: false, message: error.message })
     }
   }
-);
+)
 
 // Webhook for Shopier => /api/v1/payment/webhook
 export const shopierWebhook = catchAsyncErrors(async (req, res, next) => {
