@@ -8,6 +8,8 @@ const SHOPIER_API_PASSWORD = process.env.SHOPIER_API_PASSWORD;
 export const shopierCheckoutSession = async (req, res) => {
   const { orderId, total, customer } = req.body;
 
+
+  console.log("req data",orderId, total, customer );
   const data = {
     API_key: SHOPIER_API_USER,
     website_index: '1',
@@ -34,6 +36,8 @@ export const shopierCheckoutSession = async (req, res) => {
   try {
     const response = await axios.post(SHOPIER_API_URL, data);
     const paymentUrl = response.data.payment_link; // Shopier'in döndüğü ödeme linki
+
+    console.log("paymentUrl",paymentUrl);
     res.json({ paymentUrl });
   } catch (error) {
     console.error('Shopier API Error:', error);

@@ -11,7 +11,7 @@ import {
 // Shopier checkout session endpoint
 router
   .route('/payment/checkout_session')
-  .post(shopierCheckoutSession);
+  .post(isAuthenticatedUser, shopierCheckoutSession);
 
 // Shopier webhook endpoint
 router.route('/payment/webhook').post(shopierWebhook);
