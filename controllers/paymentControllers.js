@@ -1,15 +1,16 @@
-import axios from 'axios';
-import crypto from 'crypto';
+import axios from 'axios'
+import crypto from 'crypto'
 
-const SHOPIER_API_URL = 'https://www.shopier.com/ShowProduct/api_integration.php';
-const SHOPIER_API_USER = process.env.SHOPIER_API_USER;
-const SHOPIER_API_PASSWORD = process.env.SHOPIER_API_PASSWORD;
+const SHOPIER_API_URL =
+  'https://www.shopier.com/ShowProduct/api_integration.php'
+const SHOPIER_API_USER = process.env.SHOPIER_API_USER
+const SHOPIER_API_PASSWORD = process.env.SHOPIER_API_PASSWORD
 
 export const shopierCheckoutSession = async (req, res) => {
-  const { orderId, total, customer } = req.body;
+  const { orderId, total, customer } = req.body
 
-  console.log("Received data:", orderId, total, customer);
-  console.log("API User:", SHOPIER_API_USER);
+  console.log('Received data:', orderId, total, customer)
+  console.log('API User:', SHOPIER_API_USER)
 
   const data = {
     API_key: SHOPIER_API_USER,
@@ -17,6 +18,7 @@ export const shopierCheckoutSession = async (req, res) => {
     product_name: 'Çanta' + orderId,
     product_type: 1,
     total_order_value: total,
+    currency: 'TRY',
     customer_firstname: customer.firstName,
     customer_lastname: customer.lastName,
     customer_email: customer.email,
@@ -25,37 +27,50 @@ export const shopierCheckoutSession = async (req, res) => {
     customer_country: customer.country,
     customer_phone: customer.phone,
     platform_order_id: orderId,
-  };
+    success_url: `${process.env.FRONTEND_URL}/me/orders/shopier-success`,
+    fail_url: `${process.env.FRONTEND_URL}`,
+  }
 
-  console.log("Prepared data:", data);
+  console.log('Prepared data:', data)
 
   // Veri doğrulama için imza oluşturma
   const signature = crypto
     .createHmac('sha256', SHOPIER_API_PASSWORD)
     .update(JSON.stringify(data))
-    .digest('hex');
-  data.signature = signature;
+    .digest('hex')
+  data.signature = signature
 
-  console.log("Signature:", signature);
+  console.log('Signature:', signature)
 
   try {
-    const response = await axios.post(SHOPIER_API_URL, data);
-    console.log("Response from Shopier:", response.data);  // Ekstra log ekleyin
-    const paymentUrl = response.data.payment_link; // Shopier'in döndüğü ödeme linki
+      const response = await axios.post(SHOPIER_API_URL, data, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    });
+    console.log('Response from Shopier:', response.data) // Ekstra log ekleyin
+    const paymentUrl = response.data.payment_link // Shopier'in döndüğü ödeme linki
 
-    console.log("Payment URL:", paymentUrl);
-    res.json({ paymentUrl });
+    console.log('Payment URL:', paymentUrl)
+    res.json({ paymentUrl })
   } catch (error) {
-    console.error('Shopier API Error:', error.response ? error.response.data : error.message);
-    res.status(500).json({ error: 'Shopier API Error', details: error.response ? error.response.data : error.message });
+    console.error(
+      'Shopier API Error:',
+      error.response ? error.response.data : error.message
+    )
+    res
+      .status(500)
+      .json({
+        error: 'Shopier API Error',
+        details: error.response ? error.response.data : error.message,
+      })
   }
-};
+}
 
 export const shopierWebhook = (req, res) => {
   // Webhook işlemlerini burada gerçekleştirin
-  res.status(200).json({ success: true });
-};
-
+  res.status(200).json({ success: true })
+}
 
 // import catchAsyncErrors from '../middlewares/catchAsyncErrors.js'
 // import Order from '../models/order.js'
