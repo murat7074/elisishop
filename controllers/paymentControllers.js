@@ -10,7 +10,7 @@ export const shopierCheckoutSession = async (req, res) => {
 
   console.log("Received data:", orderId, total, customer);
   console.log("API User:", SHOPIER_API_USER);
-  
+
   const data = {
     API_key: SHOPIER_API_USER,
     website_index: '1',
@@ -40,13 +40,14 @@ export const shopierCheckoutSession = async (req, res) => {
 
   try {
     const response = await axios.post(SHOPIER_API_URL, data);
+    console.log("Response from Shopier:", response.data);  // Ekstra log ekleyin
     const paymentUrl = response.data.payment_link; // Shopier'in döndüğü ödeme linki
 
     console.log("Payment URL:", paymentUrl);
     res.json({ paymentUrl });
   } catch (error) {
     console.error('Shopier API Error:', error.response ? error.response.data : error.message);
-    res.status(500).json({ error: 'Shopier API Error' });
+    res.status(500).json({ error: 'Shopier API Error', details: error.response ? error.response.data : error.message });
   }
 };
 
