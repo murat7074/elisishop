@@ -8,8 +8,9 @@ const SHOPIER_API_PASSWORD = process.env.SHOPIER_API_PASSWORD;
 export const shopierCheckoutSession = async (req, res) => {
   const { orderId, total, customer } = req.body;
 
-
-  console.log("req data",orderId, total, customer );
+  console.log("Received data:", orderId, total, customer);
+  console.log("API User:", SHOPIER_API_USER);
+  
   const data = {
     API_key: SHOPIER_API_USER,
     website_index: '1',
@@ -26,6 +27,8 @@ export const shopierCheckoutSession = async (req, res) => {
     platform_order_id: orderId,
   };
 
+  console.log("Prepared data:", data);
+
   // Veri doğrulama için imza oluşturma
   const signature = crypto
     .createHmac('sha256', SHOPIER_API_PASSWORD)
@@ -33,14 +36,16 @@ export const shopierCheckoutSession = async (req, res) => {
     .digest('hex');
   data.signature = signature;
 
+  console.log("Signature:", signature);
+
   try {
     const response = await axios.post(SHOPIER_API_URL, data);
     const paymentUrl = response.data.payment_link; // Shopier'in döndüğü ödeme linki
 
-    console.log("paymentUrl",paymentUrl);
+    console.log("Payment URL:", paymentUrl);
     res.json({ paymentUrl });
   } catch (error) {
-    console.error('Shopier API Error:', error);
+    console.error('Shopier API Error:', error.response ? error.response.data : error.message);
     res.status(500).json({ error: 'Shopier API Error' });
   }
 };
@@ -49,7 +54,6 @@ export const shopierWebhook = (req, res) => {
   // Webhook işlemlerini burada gerçekleştirin
   res.status(200).json({ success: true });
 };
-
 
 
 // import catchAsyncErrors from '../middlewares/catchAsyncErrors.js'
