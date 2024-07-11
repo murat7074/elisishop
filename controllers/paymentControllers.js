@@ -18,9 +18,9 @@ const iyzipay = new Iyzipay({
 });
 
 export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => {
-  console.log('iyzicoCheckoutSession started'); // Log ekledik
+  console.log('iyzicoCheckoutSession started'); 
   const body = req.body;
-  console.log('Request body:', body); // Log ekledik
+  console.log('Request body:', body); 
 
   const errors = [];
 
@@ -38,7 +38,7 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
         productColorID: item.productColorID,
       });
 
-      continue; // Bu ürün için işlemi atla ve bir sonraki ürüne geç
+      continue;
     }
 
     const color = product.colors.find(
@@ -55,51 +55,48 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
   }
 
   if (errors.length > 0) {
-    console.log('Errors found:', errors); // Log ekledik
+    console.log('Errors found:', errors); 
     return res.status(400).json({ success: false, errors });
   }
 
-  const basketItems = body.orderItems.map((item) => {
-    return {
-      id: item.product,
-      name: item.name,
-      category1: 'Collectibles', // Kendi kategorinizi belirleyin
-      category2: 'Accessories', // Kendi kategorinizi belirleyin
-      itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
-      price: (item.price * 100).toString(),
-    };
-  });
+  const basketItems = body.orderItems.map((item) => ({
+    id: item.product,
+    name: item.name,
+    category1: 'Collectibles', 
+    category2: 'Accessories', 
+    itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
+    price: (item.price * 100).toString(),
+  }));
 
-  // Eksik bilgileri tamamladık
   const buyer = {
     id: req.user._id.toString(),
     name: "Murat",
     surname: "Yönev",
-    gsmNumber: req.user.phone || '05424571437', // Varsayılan değer atadık
+    gsmNumber: req.user.phone || '05424571437', 
     email: req.user.email,
     identityNumber: '74300864791',
     lastLoginDate: new Date().toISOString(),
     registrationDate: req.user.createdAt.toISOString(),
     registrationAddress: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8, Gölcük, 41650, Türkiye',
     ip: req.ip,
-    city: req.user.city || 'Gölcük', // Varsayılan değer atadık
-    country: req.user.country || 'Türkiye', // Varsayılan değer atadık
-    zipCode: req.user.zipCode || '41650', // Varsayılan değer atadık
+    city: req.user.city || 'Gölcük', 
+    country: req.user.country || 'Türkiye', 
+    zipCode: req.user.zipCode || '41650', 
   };
 
   const address = {
     contactName: req.user.name || 'murat',
-    city: req.user.city || 'Gölcük', // Varsayılan değer atadık
-    country: req.user.country || 'Türkiye', // Varsayılan değer atadık
-    address: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8', // Varsayılan değer atadık
-    zipCode: req.user.zipCode || '41650', // Varsayılan değer atadık
+    city: req.user.city || 'Gölcük', 
+    country: req.user.country || 'Türkiye', 
+    address: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8', 
+    zipCode: req.user.zipCode || '41650', 
   };
 
   const request = {
     locale: Iyzipay.LOCALE.TR,
     conversationId: '123456789',
     price: body.itemsPrice.toString(),
-    paidPrice: (body.itemsPrice * 1.2).toString(), // Kendi KDV oranınızı uygulayın
+    paidPrice: (body.itemsPrice * 1.2).toString(), 
     currency: Iyzipay.CURRENCY.TRY,
     basketId: 'B67832',
     paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
@@ -110,20 +107,21 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
     basketItems: basketItems,
   };
 
-  console.log('Iyzico request:', request); // Log ekledik
+  console.log('Iyzico request:', request); 
 
   iyzipay.checkoutFormInitialize.create(request, (err, result) => {
     if (err) {
-      console.error('Iyzico error:', err); // Log ekledik
+      console.error('Iyzico error:', err); 
       return res.status(500).json({ success: false, message: err });
     }
-    console.log('Iyzico result:', result); // Log ekledik
+    console.log('Iyzico result:', result); 
     res.status(200).json({
       success: true,
       checkoutFormContent: result.checkoutFormContent,
     });
   });
 });
+
 
 
 
