@@ -1,4 +1,3 @@
-
 import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
 import Order from '../models/order.js';
 import Product from '../models/product.js';
@@ -8,6 +7,7 @@ import brevoEmailSender from '../emails/brevoEmailSender.js';
 import { orderDetailTemplateForCustomer } from '../emails/emailTemplates/orderDetailTemplateForCustomer.js';
 import { orderDetailTemplateForSeller } from '../emails/emailTemplates/orderDetailTemplateForSeller.js';
 import dotenv from 'dotenv';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
@@ -18,9 +18,9 @@ const iyzipay = new Iyzipay({
 });
 
 export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => {
-  console.log('iyzicoCheckoutSession started'); 
+  console.log('iyzicoCheckoutSession started');
   const body = req.body;
-  console.log('Request body:', body); 
+  console.log('Request body:', body);
 
   const errors = [];
 
@@ -55,87 +55,119 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
   }
 
   if (errors.length > 0) {
-    console.log('Errors found:', errors); 
+    console.log('Errors found:', errors);
     return res.status(400).json({ success: false, errors });
   }
 
   const basketItems = body.orderItems.map((item) => ({
     id: item.product,
     name: item.name,
-    category1: 'Collectibles', 
-    category2: 'Accessories', 
+    category1: 'Collectibles',
+    category2: 'Accessories',
     itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
     price: (item.price * 100).toString(),
   }));
 
   const buyer = {
     id: req.user._id.toString(),
-    name: "Murat",
-    surname: "Yönev",
-    gsmNumber: req.user.phone || '05424571437', 
+    name: req.user.name || "Murat",
+    surname: req.user.surname || "Yönev",
+    gsmNumber: req.user.phone || '05424571437',
     email: req.user.email,
     identityNumber: '74300864791',
     lastLoginDate: new Date().toISOString(),
     registrationDate: req.user.createdAt.toISOString(),
     registrationAddress: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8, Gölcük, 41650, Türkiye',
     ip: req.ip,
-    city: req.user.city || 'Gölcük', 
-    country: req.user.country || 'Türkiye', 
-    zipCode: req.user.zipCode || '41650', 
+    city: req.user.city || 'Gölcük',
+    country: req.user.country || 'Türkiye',
+    zipCode: req.user.zipCode || '41650',
   };
 
   const address = {
     contactName: req.user.name || 'murat',
-    city: req.user.city || 'Gölcük', 
-    country: req.user.country || 'Türkiye', 
-    address: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8', 
-    zipCode: req.user.zipCode || '41650', 
+    city: req.user.city || 'Gölcük',
+    country: req.user.country || 'Türkiye',
+    address: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
+    zipCode: req.user.zipCode || '41650',
   };
 
   const request = {
     locale: Iyzipay.LOCALE.TR,
-    conversationId: '123456789',
+    conversationId: uuidv4(),
     price: body.itemsPrice.toString(),
-    paidPrice: (body.itemsPrice * 1.2).toString(), 
+    paidPrice: (body.itemsPrice * 1.2).toString(),
     currency: Iyzipay.CURRENCY.TRY,
     basketId: 'B67832',
     paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
-    callbackUrl: `${process.env.FRONTEND_URL}/me/orders/iyzico-success`,
     buyer: buyer,
     shippingAddress: address,
     billingAddress: address,
     basketItems: basketItems,
+    paymentCard: {
+      cardHolderName: 'John Doe',
+      cardNumber: '5528790000000008',
+      expireMonth: '12',
+      expireYear: '2030',
+      cvc: '123',
+      registerCard: '0',
+    },
   };
 
-  console.log('Iyzico request:', request); 
+  console.log('Iyzico request:', request);
 
-  iyzipay.checkoutFormInitialize.create(request, (err, result) => {
-    if (err) {
-      console.error('Iyzico error:', err); 
-      return res.status(500).json({ success: false, message: err });
-    }
-    console.log('Iyzico result:', result); 
-    res.status(200).json({
-      success: true,
-      checkoutFormContent: result.checkoutFormContent,
+  return new Promise((resolve, reject) => {
+    iyzipay.payment.create(request, async function (err, result) {
+      if (err) {
+        console.error('Iyzico error:', err);
+        return reject({
+          custom: true,
+          status: 400,
+          message: err.errorMessage || err.message,
+        });
+      }
+
+      console.log('Iyzico payment result:', result);
+
+      // paymentı mongodb'ye kaydediyoruz
+      const saveData = new Payment({
+        sendData: request,
+        resultData: result,
+      });
+
+      await saveData.save()
+        .then((response) => console.log('Payment saved to database:', response))
+        .catch((err) => console.error('Error saving payment to database:', err));
+
+      if (result.status !== 'success') {
+        return reject({
+          custom: true,
+          status: 400,
+          message: result.errorMessage || 'Ödeme başarısız oldu',
+        });
+      }
+
+      return resolve({ success: true, message: 'Ödeme başarılı' });
     });
+  }).then((response) => {
+    res.status(200).json(response);
+  }).catch((error) => {
+    console.error('Payment process error:', error);
+    res.status(error.status || 500).json({ success: false, message: error.message || 'Ödeme sırasında bir hata oluştu' });
   });
 });
 
-
-
-
 export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
-  console.log('iyzicoWebhook started'); // Log ekledik
+  console.log('iyzicoWebhook started');
   const { paymentId, status, conversationData } = req.body;
-  console.log('Webhook data:', req.body); // Log ekledik
+  console.log('Webhook data:', req.body);
 
   if (status === 'success') {
     const orderData = JSON.parse(conversationData);
     const { user, shippingInfo, shippingInvoiceInfo, orderItems, itemsPrice } = orderData;
 
     const orderItemsDetails = await getOrderItems(orderItems);
-    console.log('Order items details:', orderItemsDetails); // Log ekledik
+    console.log('Order items details:', orderItemsDetails);
 
     const totalAmount = itemsPrice * 1.2; // KDV oranınızı uygulayın
     const taxAmount = itemsPrice * 0.2;
@@ -159,7 +191,7 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
       user,
     });
 
-    console.log('Order created:', order); // Log ekledik
+    console.log('Order created:', order);
 
     // Sipariş oluşturulduktan sonra stok ve renk stok güncelleme işlemleri
     for (const item of order.orderItems) {
@@ -186,7 +218,7 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
       }
     }
 
-    console.log('Stock updated'); // Log ekledik
+    console.log('Stock updated');
 
     // SEND EMAIL TO USER
 
@@ -219,7 +251,7 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
       name: userInfo.name,
     });
 
-    console.log('Email sent to user'); // Log ekledik
+    console.log('Email sent to user');
 
     // SEND EMAIL TO SELLER
 
@@ -239,11 +271,11 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
       name: sellerName,
     });
 
-    console.log('Email sent to seller'); // Log ekledik
+    console.log('Email sent to seller');
 
     res.status(200).json({ success: true });
   } else {
-    console.log('Payment failed'); // Log ekledik
+    console.log('Payment failed');
     res.status(400).json({ success: false, message: 'Payment failed' });
   }
 });
@@ -252,6 +284,269 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
 
 
 
+
+
+
+
+
+
+
+
+
+// import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
+// import Order from '../models/order.js';
+// import Product from '../models/product.js';
+// import User from '../models/user.js';
+// import Iyzipay from 'iyzipay';
+// import brevoEmailSender from '../emails/brevoEmailSender.js';
+// import { orderDetailTemplateForCustomer } from '../emails/emailTemplates/orderDetailTemplateForCustomer.js';
+// import { orderDetailTemplateForSeller } from '../emails/emailTemplates/orderDetailTemplateForSeller.js';
+// import dotenv from 'dotenv';
+// import { v4 as uuidv4 } from 'uuid';
+
+// dotenv.config();
+
+// const iyzipay = new Iyzipay({
+//   apiKey: process.env.IYZIPAY_API_KEY,
+//   secretKey: process.env.IYZIPAY_SECRET_KEY,
+//   uri: 'https://sandbox-api.iyzipay.com', // Production için 'https://api.iyzipay.com' kullanın
+// });
+
+// export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => {
+//   console.log('iyzicoCheckoutSession started');
+//   const body = req.body;
+//   console.log('Request body:', body);
+
+//   const errors = [];
+
+//   // 2. Adım: Sipariş Edilen Ürünleri Kontrol Etme
+//   for (const item of body.orderItems) {
+//     const product = await Product.findOne({
+//       _id: item.product,
+//       'colors.productColorID': item.productColorID,
+//     });
+
+//     if (!product) {
+//       errors.push({
+//         msg: `Ürün bulunamadı: ${item.name}`,
+//         color: '',
+//         productColorID: item.productColorID,
+//       });
+
+//       continue;
+//     }
+
+//     const color = product.colors.find(
+//       (color) => color.productColorID === item.productColorID
+//     );
+
+//     if (color.colorStock < item.amount) {
+//       errors.push({
+//         msg: `Stokta yeterli miktarda ürün yok: ${item.name}`,
+//         color: color.color,
+//         productColorID: item.productColorID,
+//       });
+//     }
+//   }
+
+//   if (errors.length > 0) {
+//     console.log('Errors found:', errors);
+//     return res.status(400).json({ success: false, errors });
+//   }
+
+//   const basketItems = body.orderItems.map((item) => ({
+//     id: item.product,
+//     name: item.name,
+//     category1: 'Collectibles',
+//     category2: 'Accessories',
+//     itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
+//     price: (item.price * 100).toString(),
+//   }));
+
+//   const buyer = {
+//     id: req.user._id.toString(),
+//     name: req.user.name || "Murat",
+//     surname: req.user.surname || "Yönev",
+//     gsmNumber: req.user.phone || '+905424571437',
+//     email: req.user.email,
+//     identityNumber: '74300864791',
+//     lastLoginDate: new Date().toISOString(),
+//     registrationDate: req.user.createdAt.toISOString(),
+//     registrationAddress: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8, Gölcük, 41650, Türkiye',
+//     ip: req.ip,
+//     city: req.user.city || 'Gölcük',
+//     country: req.user.country || 'Türkiye',
+//     zipCode: req.user.zipCode || '41650',
+//   };
+
+//   const address = {
+//     contactName: req.user.name || 'murat',
+//     city: req.user.city || 'Gölcük',
+//     country: req.user.country || 'Türkiye',
+//     address: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
+//     zipCode: req.user.zipCode || '41650',
+//   };
+
+//   const request = {
+//     locale: Iyzipay.LOCALE.TR,
+//     conversationId: uuidv4(),
+//     price: body.itemsPrice.toString(),
+//     paidPrice: (body.itemsPrice * 1.2).toString(),
+//     currency: Iyzipay.CURRENCY.TRY,
+//     basketId: 'B67832',
+//     paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
+//     callbackUrl: `${process.env.FRONTEND_URL}/me/orders/iyzico-success`,
+//     buyer: buyer,
+//     shippingAddress: address,
+//     billingAddress: address,
+//     basketItems: basketItems,
+//     paymentCard: {
+//       cardHolderName: 'John Doe',
+//       cardNumber: '5528790000000008',
+//       expireMonth: '12',
+//       expireYear: '2030',
+//       cvc: '123',
+//       registerCard: '0',
+//     },
+//   };
+
+//   console.log('Iyzico request:', request);
+
+//   iyzipay.checkoutFormInitialize.create(request, (err, result) => {
+//     if (err) {
+//       console.error('Iyzico error:', err);
+//       return res.status(500).json({ success: false, message: err });
+//     }
+//     console.log('Iyzico result:', result);
+//     res.status(200).json({
+//       success: true,
+//       checkoutFormContent: result.checkoutFormContent,
+//     });
+//   });
+// });
+
+// export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
+//   console.log('iyzicoWebhook started');
+//   const { paymentId, status, conversationData } = req.body;
+//   console.log('Webhook data:', req.body);
+
+//   if (status === 'success') {
+//     const orderData = JSON.parse(conversationData);
+//     const { user, shippingInfo, shippingInvoiceInfo, orderItems, itemsPrice } = orderData;
+
+//     const orderItemsDetails = await getOrderItems(orderItems);
+//     console.log('Order items details:', orderItemsDetails);
+
+//     const totalAmount = itemsPrice * 1.2; // KDV oranınızı uygulayın
+//     const taxAmount = itemsPrice * 0.2;
+//     const shippingAmount = totalAmount - itemsPrice - taxAmount;
+
+//     const paymentInfo = {
+//       id: paymentId,
+//       status: status,
+//     };
+
+//     const order = await Order.create({
+//       shippingInfo,
+//       shippingInvoiceInfo,
+//       orderItems: orderItemsDetails,
+//       itemsPrice,
+//       taxAmount,
+//       shippingAmount,
+//       totalAmount,
+//       paymentInfo,
+//       paymentMethod: 'Card',
+//       user,
+//     });
+
+//     console.log('Order created:', order);
+
+//     // Sipariş oluşturulduktan sonra stok ve renk stok güncelleme işlemleri
+//     for (const item of order.orderItems) {
+//       const product = await Product.findById(item.product);
+
+//       if (product) {
+//         for (const colorItem of item.colors) {
+//           const productColor = product.colors.find(
+//             (color) => color.color === colorItem.color
+//           );
+
+//           if (productColor) {
+//             productColor.colorStock -= item.amount;
+//           }
+//         }
+
+//         product.stock -= item.amount;
+
+//         await Product.findByIdAndUpdate(
+//           item.product,
+//           { $set: { stock: product.stock, colors: product.colors } },
+//           { new: true, runValidators: true }
+//         );
+//       }
+//     }
+
+//     console.log('Stock updated');
+
+//     // SEND EMAIL TO USER
+
+//     const orderProducts = order.orderItems;
+//     const orderInfo = {
+//       itemsPrice: order.orderItems
+//         .reduce((acc, item) => acc + item.price * item.amount, 0)
+//         .toFixed(2),
+//       taxAmount: order.taxAmount,
+//       shippingAmount: order.shippingAmount,
+//       totalAmount: order.totalAmount,
+//       orderNumber: order._id,
+//       paymentMethod: order.paymentMethod,
+//     };
+
+//     const userShippingInfo = order.shippingInfo;
+
+//     const message = orderDetailTemplateForCustomer(
+//       userShippingInfo,
+//       orderInfo,
+//       orderProducts
+//     );
+
+//     const userInfo = await User.findById(user);
+
+//     await brevoEmailSender({
+//       email: userInfo.email,
+//       subject: 'Beybuilmek Sipariş Verildi.',
+//       message,
+//       name: userInfo.name,
+//     });
+
+//     console.log('Email sent to user');
+
+//     // SEND EMAIL TO SELLER
+
+//     const sellerEmail = 'beybuilmek@gmail.com';
+//     const sellerName = 'beybuilmek';
+
+//     const messageForSeller = orderDetailTemplateForSeller(
+//       userShippingInfo,
+//       orderInfo,
+//       orderProducts
+//     );
+
+//     await brevoEmailSender({
+//       email: sellerEmail,
+//       subject: 'Beybuilmek Sipariş Verildi.',
+//       message: messageForSeller,
+//       name: sellerName,
+//     });
+
+//     console.log('Email sent to seller');
+
+//     res.status(200).json({ success: true });
+//   } else {
+//     console.log('Payment failed');
+//     res.status(400).json({ success: false, message: 'Payment failed' });
+//   }
+// });
 
 
 
