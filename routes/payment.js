@@ -4,10 +4,11 @@ import express from 'express';
 const router = express.Router();
 
 import { isAuthenticatedUser } from '../middlewares/auth.js';
-import { iyzicoCheckoutSession, iyzicoWebhook } from '../controllers/paymentControllers.js';
+import { iyzicoCheckoutSession } from '../controllers/paymentControllers.js';
+// import { iyzicoCheckoutSession, iyzicoWebhook } from '../controllers/paymentControllers.js';
 
 router.route('/payment/checkout_session').post(isAuthenticatedUser, iyzicoCheckoutSession);
-router.route('/payment/webhook').post(iyzicoWebhook);
+// router.route('/payment/webhook').post(iyzicoWebhook);
 
 export default router;
 
