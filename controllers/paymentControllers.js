@@ -70,6 +70,31 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
     };
   });
 
+  // Eksik bilgileri tamamladık
+  const buyer = {
+    id: req.user._id.toString(),
+    name: "Murat",
+    surname: "Yönev",
+    gsmNumber: req.user.phone || '05424571437', // Varsayılan değer atadık
+    email: req.user.email,
+    identityNumber: '74300864791',
+    lastLoginDate: new Date().toISOString(),
+    registrationDate: req.user.createdAt.toISOString(),
+    registrationAddress: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8, Gölcük, 41650, Türkiye',
+    ip: req.ip,
+    city: req.user.city || 'Gölcük', // Varsayılan değer atadık
+    country: req.user.country || 'Türkiye', // Varsayılan değer atadık
+    zipCode: req.user.zipCode || '41650', // Varsayılan değer atadık
+  };
+
+  const address = {
+    contactName: req.user.name || 'murat',
+    city: req.user.city || 'Gölcük', // Varsayılan değer atadık
+    country: req.user.country || 'Türkiye', // Varsayılan değer atadık
+    address: req.user.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8', // Varsayılan değer atadık
+    zipCode: req.user.zipCode || '41650', // Varsayılan değer atadık
+  };
+
   const request = {
     locale: Iyzipay.LOCALE.TR,
     conversationId: '123456789',
@@ -79,35 +104,9 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
     basketId: 'B67832',
     paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
     callbackUrl: `${process.env.FRONTEND_URL}/me/orders/iyzico-success`,
-    buyer: {
-      id: req.user._id.toString(),
-      name: "Murat",
-      surname: "Yönev",
-      gsmNumber: req.user.phone,
-      email: req.user.email,
-      identityNumber: '74300864791',
-      lastLoginDate: new Date().toISOString(),
-      registrationDate: req.user.createdAt,
-      registrationAddress: req.user.address,
-      ip: req.ip,
-      city: req.user.city,
-      country: req.user.country,
-      zipCode: req.user.zipCode,
-    },
-    shippingAddress: {
-      contactName: req.user.name,
-      city: req.user.city,
-      country: req.user.country,
-      address: req.user.address,
-      zipCode: req.user.zipCode,
-    },
-    billingAddress: {
-      contactName: req.user.name,
-      city: req.user.city,
-      country: req.user.country,
-      address: req.user.address,
-      zipCode: req.user.zipCode,
-    },
+    buyer: buyer,
+    shippingAddress: address,
+    billingAddress: address,
     basketItems: basketItems,
   };
 
@@ -125,7 +124,6 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
     });
   });
 });
-
 
 
 
