@@ -16,6 +16,10 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
   const body = req.body;
   console.log('Request body:', body);
 
+  // Sabit tarihler
+  const lastLoginDate = '2024-06-05 12:43:35';
+  const registrationDate = '2020-04-21 15:12:09';
+
   // Ödeme isteği oluşturma
   const request = {
     locale: Iyzipay.LOCALE.TR,
@@ -32,8 +36,8 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
       gsmNumber: '+905424571437',
       email: 'murat@example.com',
       identityNumber: '74300864791',
-      lastLoginDate: new Date().toISOString(),
-      registrationDate: new Date().toISOString(),
+      lastLoginDate: lastLoginDate, // Sabit olarak belirtilen son giriş tarihi
+      registrationDate: registrationDate, // Sabit olarak belirtilen kayıt tarihi
       registrationAddress: 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8, Gölcük, 41650, Türkiye',
       ip: req.ip,
       city: 'Gölcük',
@@ -82,7 +86,7 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
       console.error('Payment error:', err);
       return res.status(400).json({
         success: false,
-        message: err.errorMessage || err.message,
+        message: err.message || 'Ödeme hatası oluştu',
       });
     }
 
@@ -103,7 +107,110 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
   });
 });
 
+// import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
+// import Iyzipay from 'iyzipay';
+// import dotenv from 'dotenv';
+// import { v4 as uuidv4 } from 'uuid';
 
+// dotenv.config();
+
+// const iyzipay = new Iyzipay({
+//   apiKey: process.env.IYZIPAY_API_KEY,
+//   secretKey: process.env.IYZIPAY_SECRET_KEY,
+//   uri: 'https://sandbox-api.iyzipay.com', // Test ortamı için sandbox URI kullanılıyor
+// });
+
+// export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => {
+//   console.log('iyzicoCheckoutSession started');
+//   const body = req.body;
+//   console.log('Request body:', body);
+
+//   // Ödeme isteği oluşturma
+//   const request = {
+//     locale: Iyzipay.LOCALE.TR,
+//     conversationId: uuidv4(),
+//     price: '100.0', // Ödeme tutarını burada belirleyin
+//     paidPrice: '120.0', // Ödeme tutarı + KDV olarak burada belirleyin
+//     currency: Iyzipay.CURRENCY.TRY,
+//     basketId: 'B67832',
+//     paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
+//     buyer: {
+//       id: '123', // Müşteri ID'si
+//       name: 'Murat',
+//       surname: 'Yönev',
+//       gsmNumber: '+905424571437',
+//       email: 'murat@example.com',
+//       identityNumber: '74300864791',
+//       lastLoginDate: new Date().toISOString(),
+//       registrationDate: new Date().toISOString(),
+//       registrationAddress: 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8, Gölcük, 41650, Türkiye',
+//       ip: req.ip,
+//       city: 'Gölcük',
+//       country: 'Türkiye',
+//       zipCode: '41650',
+//     },
+//     shippingAddress: {
+//       contactName: 'Murat',
+//       city: 'Gölcük',
+//       country: 'Türkiye',
+//       address: 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
+//       zipCode: '41650',
+//     },
+//     billingAddress: {
+//       contactName: 'Murat',
+//       city: 'Gölcük',
+//       country: 'Türkiye',
+//       address: 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
+//       zipCode: '41650',
+//     },
+//     basketItems: [
+//       {
+//         id: '1', // Ürün ID'si
+//         name: 'Ürün Adı',
+//         category1: 'Collectibles',
+//         category2: 'Accessories',
+//         itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
+//         price: '10000', // Kuruş cinsinden fiyat (örneğin, 100.00 TL için 10000)
+//       },
+//     ],
+//     paymentCard: {
+//       cardHolderName: 'John Doe',
+//       cardNumber: '5528790000000008',
+//       expireMonth: '12',
+//       expireYear: '2030',
+//       cvc: '123',
+//       registerCard: '0',
+//     },
+//   };
+
+//   console.log('Iyzico request:', request);
+
+//   // Iyzipay API'si üzerinden gerçek bir ödeme isteği gönderme
+//   iyzipay.payment.create(request, function (err, result) {
+//     if (err) {
+//       console.error('Payment error:', err);
+//       return res.status(400).json({
+//         success: false,
+//         message: err.errorMessage || err.message,
+//       });
+//     }
+
+//     console.log('Payment result:', result);
+
+//     // Ödeme başarılı ise
+//     if (result.status === 'success') {
+//       console.log('Ödeme başarılı');
+//       res.status(200).json({ success: true, message: 'Ödeme başarılı' });
+//     } else {
+//       // Ödeme başarısız ise
+//       console.log('Ödeme başarısız:', result.errorMessage || 'Ödeme başarısız');
+//       res.status(400).json({
+//         success: false,
+//         message: result.errorMessage || 'Ödeme başarısız',
+//       });
+//     }
+//   });
+// });
 
 // import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
 // import Order from '../models/order.js';
