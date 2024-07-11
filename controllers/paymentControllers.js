@@ -1,6 +1,4 @@
 
-
-
 import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
 import Order from '../models/order.js';
 import Product from '../models/product.js';
@@ -20,7 +18,9 @@ const iyzipay = new Iyzipay({
 });
 
 export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => {
+  console.log('iyzicoCheckoutSession started'); // Log ekledik
   const body = req.body;
+  console.log('Request body:', body); // Log ekledik
 
   const errors = [];
 
@@ -55,6 +55,7 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
   }
 
   if (errors.length > 0) {
+    console.log('Errors found:', errors); // Log ekledik
     return res.status(400).json({ success: false, errors });
   }
 
@@ -74,16 +75,13 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
     conversationId: '123456789',
     price: body.itemsPrice.toString(),
     paidPrice: (body.itemsPrice * 1.2).toString(), // Kendi KDV oranınızı uygulayın
-    // paidPrice: (body.itemsPrice).toString(), // Kendi KDV oranınızı uygulayın
     currency: Iyzipay.CURRENCY.TRY,
     basketId: 'B67832',
     paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
     callbackUrl: `${process.env.FRONTEND_URL}/me/orders/iyzico-success`,
     buyer: {
       id: req.user._id.toString(),
-      // name: req.user.name,
-      // surname: req.user.surname,
-       name: "Murat",
+      name: "Murat",
       surname: "Yönev",
       gsmNumber: req.user.phone,
       email: req.user.email,
@@ -113,10 +111,14 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
     basketItems: basketItems,
   };
 
+  console.log('Iyzico request:', request); // Log ekledik
+
   iyzipay.checkoutFormInitialize.create(request, (err, result) => {
     if (err) {
+      console.error('Iyzico error:', err); // Log ekledik
       return res.status(500).json({ success: false, message: err });
     }
+    console.log('Iyzico result:', result); // Log ekledik
     res.status(200).json({
       success: true,
       checkoutFormContent: result.checkoutFormContent,
@@ -124,38 +126,20 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
   });
 });
 
-const getOrderItems = async (orderItems) => {
-  let cartItems = [];
 
-  for (const item of orderItems) {
-    const product = await Product.findById(item.product);
-    if (product) {
-      const color = product.colors.find(
-        (color) => color.productColorID === item.productColorID
-      );
 
-      cartItems.push({
-        product: item.product,
-        name: product.name,
-        price: item.price,
-        amount: item.amount,
-        image: item.image,
-        colors: color,
-      });
-    }
-  }
-
-  return cartItems;
-};
 
 export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
+  console.log('iyzicoWebhook started'); // Log ekledik
   const { paymentId, status, conversationData } = req.body;
+  console.log('Webhook data:', req.body); // Log ekledik
 
   if (status === 'success') {
     const orderData = JSON.parse(conversationData);
     const { user, shippingInfo, shippingInvoiceInfo, orderItems, itemsPrice } = orderData;
 
     const orderItemsDetails = await getOrderItems(orderItems);
+    console.log('Order items details:', orderItemsDetails); // Log ekledik
 
     const totalAmount = itemsPrice * 1.2; // KDV oranınızı uygulayın
     const taxAmount = itemsPrice * 0.2;
@@ -178,6 +162,8 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
       paymentMethod: 'Card',
       user,
     });
+
+    console.log('Order created:', order); // Log ekledik
 
     // Sipariş oluşturulduktan sonra stok ve renk stok güncelleme işlemleri
     for (const item of order.orderItems) {
@@ -203,6 +189,8 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
         );
       }
     }
+
+    console.log('Stock updated'); // Log ekledik
 
     // SEND EMAIL TO USER
 
@@ -235,6 +223,8 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
       name: userInfo.name,
     });
 
+    console.log('Email sent to user'); // Log ekledik
+
     // SEND EMAIL TO SELLER
 
     const sellerEmail = 'beybuilmek@gmail.com';
@@ -253,16 +243,14 @@ export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
       name: sellerName,
     });
 
+    console.log('Email sent to seller'); // Log ekledik
+
     res.status(200).json({ success: true });
   } else {
+    console.log('Payment failed'); // Log ekledik
     res.status(400).json({ success: false, message: 'Payment failed' });
   }
 });
-
-
-
-
-
 
 
 
