@@ -17,15 +17,15 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
   console.log('Request body:', body);
 
   // Sabit tarihler
-  const lastLoginDate = '2024-06-05 12:43:35';
-  const registrationDate = '2020-04-21 15:12:09';
+  const lastLoginDate = '2015-10-05 12:43:35';
+  const registrationDate = '2013-04-21 15:12:09';
 
   // Ödeme isteği oluşturma
   const request = {
     locale: Iyzipay.LOCALE.TR,
     conversationId: uuidv4(),
-    price: '100.0', // Ödeme tutarını burada belirleyin
-    paidPrice: '120.0', // Ödeme tutarı + KDV olarak burada belirleyin
+    price: (parseFloat(body.itemsPrice) * 100).toFixed(2), // Ödeme tutarını burada belirleyin
+    paidPrice: (parseFloat(body.totalAmount) * 100).toFixed(2), // Ödeme tutarı + KDV olarak burada belirleyin
     currency: Iyzipay.CURRENCY.TRY,
     basketId: 'B67832',
     paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
@@ -45,29 +45,27 @@ export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => 
       zipCode: '41650',
     },
     shippingAddress: {
-      contactName: 'Murat',
-      city: 'Gölcük',
-      country: 'Türkiye',
-      address: 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
-      zipCode: '41650',
+      contactName: body.shippingInfo.userName || 'Murat', // Örnek kullanıcı adı
+      city: body.shippingInfo.city || 'Gölcük',
+      country: body.shippingInfo.country || 'Türkiye',
+      address: body.shippingInfo.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
+      zipCode: body.shippingInfo.zipCode || '41650',
     },
     billingAddress: {
-      contactName: 'Murat',
-      city: 'Gölcük',
-      country: 'Türkiye',
-      address: 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
-      zipCode: '41650',
+      contactName: body.shippingInvoiceInfo.userName || 'Murat', // Fatura bilgileri
+      city: body.shippingInvoiceInfo.city || 'Gölcük',
+      country: body.shippingInvoiceInfo.country || 'Türkiye',
+      address: body.shippingInvoiceInfo.address || 'Donanma mah. İlhantuba var. No:25 Altınşehir sitesi I-8',
+      zipCode: body.shippingInvoiceInfo.zipCode || '41650',
     },
-    basketItems: [
-      {
-        id: '1', // Ürün ID'si
-        name: 'Ürün Adı',
-        category1: 'Collectibles',
-        category2: 'Accessories',
-        itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
-        price: '10000', // Kuruş cinsinden fiyat (örneğin, 100.00 TL için 10000)
-      },
-    ],
+    basketItems: body.orderItems.map(item => ({
+      id: item.product,
+      name: item.name,
+      category1: 'Collectibles',
+      category2: 'Accessories',
+      itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
+      price: (parseFloat(item.price) * 100).toFixed(2),
+    })),
     paymentCard: {
       cardHolderName: 'John Doe',
       cardNumber: '5528790000000008',
