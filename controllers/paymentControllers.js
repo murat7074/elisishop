@@ -1,146 +1,175 @@
-import catchAsyncErrors from '../middlewares/catchAsyncErrors.js'
-import Order from '../models/order.js'
-import Product from '../models/product.js'
-import User from '../models/user.js'
-import axios from 'axios'
-import brevoEmailSender from '../emails/brevoEmailSender.js'
-import { orderDetailTemplateForCustomer } from '../emails/emailTemplates/orderDetailTemplateForCustomer.js'
-import { orderDetailTemplateForSeller } from '../emails/emailTemplates/orderDetailTemplateForSeller.js'
 
-const SHOPIER_API_URL = 'https://www.shopier.com/ShowProduct/api_pay4.php'
-const SHOPIER_API_USER = process.env.SHOPIER_API_USER
-const SHOPIER_API_PASSWORD = process.env.SHOPIER_API_PASSWORD
 
-// Create Shopier checkout session => /api/v1/payment/checkout_session
-export const shopierCheckoutSession = catchAsyncErrors(
-  async (req, res, next) => {
-    console.log('Request body:', req.body) // Log the incoming request
 
-    const body = req.body
-    const errors = []
+import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
+import Order from '../models/order.js';
+import Product from '../models/product.js';
+import User from '../models/user.js';
+import Iyzipay from 'iyzipay';
+import brevoEmailSender from '../emails/brevoEmailSender.js';
+import { orderDetailTemplateForCustomer } from '../emails/emailTemplates/orderDetailTemplateForCustomer.js';
+import { orderDetailTemplateForSeller } from '../emails/emailTemplates/orderDetailTemplateForSeller.js';
+import dotenv from 'dotenv';
 
-    for (const item of body.orderItems) {
-      const product = await Product.findOne({
-        _id: item.product,
-        'colors.productColorID': item.productColorID,
-      })
+dotenv.config();
 
-      if (!product) {
-        errors.push({
-          msg: `Ürün bulunamadı: ${item.name}`,
-          color: '',
-          productColorID: item.productColorID,
-        })
+const iyzipay = new Iyzipay({
+  apiKey: process.env.IYZIPAY_API_KEY,
+  secretKey: process.env.IYZIPAY_SECRET_KEY,
+  uri: 'https://sandbox-api.iyzipay.com', // Production için 'https://api.iyzipay.com' kullanın
+});
 
-        continue // Bu ürün için işlemi atla ve bir sonraki ürüne geç
-      }
+export const iyzicoCheckoutSession = catchAsyncErrors(async (req, res, next) => {
+  const body = req.body;
 
-      const color = product.colors.find(
-        (color) => color.productColorID === item.productColorID
-      )
+  const errors = [];
 
-      if (color.colorStock < item.amount) {
-        errors.push({
-          msg: `Stokta yeterli miktarda ürün yok: ${item.name}`,
-          color: color.color,
-          productColorID: item.productColorID,
-        })
-      }
+  // 2. Adım: Sipariş Edilen Ürünleri Kontrol Etme
+  for (const item of body.orderItems) {
+    const product = await Product.findOne({
+      _id: item.product,
+      'colors.productColorID': item.productColorID,
+    });
+
+    if (!product) {
+      errors.push({
+        msg: `Ürün bulunamadı: ${item.name}`,
+        color: '',
+        productColorID: item.productColorID,
+      });
+
+      continue; // Bu ürün için işlemi atla ve bir sonraki ürüne geç
     }
 
-    if (errors.length > 0) {
-      return res.status(400).json({ success: false, errors })
-    }
+    const color = product.colors.find(
+      (color) => color.productColorID === item.productColorID
+    );
 
-    const totalAmount = body.orderItems.reduce(
-      (acc, item) => acc + item.price * item.amount,
-      0
-    )
-
-    const shippingInfo = body?.shippingInfo
-    const shippingInvoiceInfo = body?.shippingInvoiceInfo
-    const shippingInvoiceInfoString = JSON.stringify(shippingInvoiceInfo)
-
-    const requestData = {
-      API_key: SHOPIER_API_USER,
-      API_secret: SHOPIER_API_PASSWORD,
-      platform_order_id: req.user._id.toString(),
-      total_amount: totalAmount,
-      currency: 'TRY',
-      customer_email: req.user.email,
-      customer_first_name: 'Murat',
-      customer_last_name: 'YÖNEV',
-      customer_address: shippingInfo.address,
-      customer_city: shippingInfo.city,
-      customer_country: shippingInfo.country,
-      customer_phone: shippingInfo.phoneNo,
-      customer_zip_code: shippingInfo.zipCode,
-      success_url: `${process.env.FRONTEND_URL}/me/orders/shopier-success`,
-      fail_url: `${process.env.FRONTEND_URL}`,
-    }
-
-    try {
-      const response = await axios.post(SHOPIER_API_URL, requestData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      })
-
-      console.log('Shopier response data:', response.data) // Log the Shopier response
-
-      if (response.data) {
-        res.status(200).send(response.data)
-      } else {
-        res.status(500).json({
-          success: false,
-          message: 'Shopier ödeme bağlantısı oluşturulamadı.',
-        })
-      }
-    } catch (error) {
-      console.error(
-        'Shopier API Error: ',
-        error.response ? error.response.data : error.message
-      )
-      res.status(500).json({ success: false, message: error.message })
+    if (color.colorStock < item.amount) {
+      errors.push({
+        msg: `Stokta yeterli miktarda ürün yok: ${item.name}`,
+        color: color.color,
+        productColorID: item.productColorID,
+      });
     }
   }
-)
 
-// Webhook for Shopier => /api/v1/payment/webhook
-export const shopierWebhook = catchAsyncErrors(async (req, res, next) => {
-  try {
-    const { status, platform_order_id, payment_id, total_amount } = req.body
+  if (errors.length > 0) {
+    return res.status(400).json({ success: false, errors });
+  }
 
-    if (status !== 'success') {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Payment not successful' })
+  const basketItems = body.orderItems.map((item) => {
+    return {
+      id: item.product,
+      name: item.name,
+      category1: 'Collectibles', // Kendi kategorinizi belirleyin
+      category2: 'Accessories', // Kendi kategorinizi belirleyin
+      itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL,
+      price: (item.price * 100).toString(),
+    };
+  });
+
+  const request = {
+    locale: Iyzipay.LOCALE.TR,
+    conversationId: '123456789',
+    price: body.itemsPrice.toString(),
+    paidPrice: (body.itemsPrice * 1.2).toString(), // Kendi KDV oranınızı uygulayın
+    // paidPrice: (body.itemsPrice).toString(), // Kendi KDV oranınızı uygulayın
+    currency: Iyzipay.CURRENCY.TRY,
+    basketId: 'B67832',
+    paymentGroup: Iyzipay.PAYMENT_GROUP.PRODUCT,
+    callbackUrl: `${process.env.FRONTEND_URL}/me/orders/iyzico-success`,
+    buyer: {
+      id: req.user._id.toString(),
+      // name: req.user.name,
+      // surname: req.user.surname,
+       name: "Murat",
+      surname: "Yönev",
+      gsmNumber: req.user.phone,
+      email: req.user.email,
+      identityNumber: '74300864791',
+      lastLoginDate: new Date().toISOString(),
+      registrationDate: req.user.createdAt,
+      registrationAddress: req.user.address,
+      ip: req.ip,
+      city: req.user.city,
+      country: req.user.country,
+      zipCode: req.user.zipCode,
+    },
+    shippingAddress: {
+      contactName: req.user.name,
+      city: req.user.city,
+      country: req.user.country,
+      address: req.user.address,
+      zipCode: req.user.zipCode,
+    },
+    billingAddress: {
+      contactName: req.user.name,
+      city: req.user.city,
+      country: req.user.country,
+      address: req.user.address,
+      zipCode: req.user.zipCode,
+    },
+    basketItems: basketItems,
+  };
+
+  iyzipay.checkoutFormInitialize.create(request, (err, result) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: err });
     }
+    res.status(200).json({
+      success: true,
+      checkoutFormContent: result.checkoutFormContent,
+    });
+  });
+});
 
-    const orderItems = JSON.parse(req.body.order_items)
-    const user = platform_order_id
+const getOrderItems = async (orderItems) => {
+  let cartItems = [];
 
-    const totalAmount = parseFloat(total_amount)
-    const taxAmount = totalAmount * 0.08 // Assuming 8% tax
-    const shippingAmount = req.body.shipping_amount || 0
-    const itemsPrice = totalAmount - taxAmount - shippingAmount
+  for (const item of orderItems) {
+    const product = await Product.findById(item.product);
+    if (product) {
+      const color = product.colors.find(
+        (color) => color.productColorID === item.productColorID
+      );
 
-    const shippingInfo = {
-      address: req.body.customer_address,
-      city: req.body.customer_city,
-      phoneNo: req.body.customer_phone,
-      zipCode: req.body.customer_zip_code,
-      country: req.body.customer_country,
-      userName:
-        req.body.customer_first_name + ' ' + req.body.customer_last_name,
+      cartItems.push({
+        product: item.product,
+        name: product.name,
+        price: item.price,
+        amount: item.amount,
+        image: item.image,
+        colors: color,
+      });
     }
+  }
+
+  return cartItems;
+};
+
+export const iyzicoWebhook = catchAsyncErrors(async (req, res, next) => {
+  const { paymentId, status, conversationData } = req.body;
+
+  if (status === 'success') {
+    const orderData = JSON.parse(conversationData);
+    const { user, shippingInfo, shippingInvoiceInfo, orderItems, itemsPrice } = orderData;
+
+    const orderItemsDetails = await getOrderItems(orderItems);
+
+    const totalAmount = itemsPrice * 1.2; // KDV oranınızı uygulayın
+    const taxAmount = itemsPrice * 0.2;
+    const shippingAmount = totalAmount - itemsPrice - taxAmount;
 
     const paymentInfo = {
-      id: payment_id,
+      id: paymentId,
       status: status,
-    }
+    };
 
-    const orderData = {
+    const order = await Order.create({
       shippingInfo,
-      orderItems,
+      shippingInvoiceInfo,
+      orderItems: orderItemsDetails,
       itemsPrice,
       taxAmount,
       shippingAmount,
@@ -148,324 +177,108 @@ export const shopierWebhook = catchAsyncErrors(async (req, res, next) => {
       paymentInfo,
       paymentMethod: 'Card',
       user,
-    }
-
-    const order = await Order.create(orderData)
+    });
 
     // Sipariş oluşturulduktan sonra stok ve renk stok güncelleme işlemleri
     for (const item of order.orderItems) {
-      const product = await Product.findById(item.product)
+      const product = await Product.findById(item.product);
 
       if (product) {
         for (const colorItem of item.colors) {
           const productColor = product.colors.find(
             (color) => color.color === colorItem.color
-          )
+          );
 
           if (productColor) {
-            productColor.colorStock -= item.amount
+            productColor.colorStock -= item.amount;
           }
         }
 
-        product.stock -= item.amount
+        product.stock -= item.amount;
 
         await Product.findByIdAndUpdate(
           item.product,
           { $set: { stock: product.stock, colors: product.colors } },
           { new: true, runValidators: true }
-        )
+        );
       }
     }
 
     // SEND EMAIL TO USER
 
-    const orderProducts = order.orderItems
+    const orderProducts = order.orderItems;
     const orderInfo = {
-      itemsPrice: order?.orderItems
-        ?.reduce((acc, item) => acc + item.price * item.amount, 0)
+      itemsPrice: order.orderItems
+        .reduce((acc, item) => acc + item.price * item.amount, 0)
         .toFixed(2),
       taxAmount: order.taxAmount,
       shippingAmount: order.shippingAmount,
       totalAmount: order.totalAmount,
       orderNumber: order._id,
       paymentMethod: order.paymentMethod,
-    }
+    };
 
-    const userShippingInfo = order.shippingInfo
+    const userShippingInfo = order.shippingInfo;
 
     const message = orderDetailTemplateForCustomer(
       userShippingInfo,
       orderInfo,
       orderProducts
-    )
+    );
 
-    const userInfo = await User.findOne({ _id: user })
+    const userInfo = await User.findById(user);
 
     await brevoEmailSender({
       email: userInfo.email,
       subject: 'Beybuilmek Sipariş Verildi.',
       message,
       name: userInfo.name,
-    })
+    });
 
     // SEND EMAIL TO SELLER
 
-    const sellerEmail = 'beybuilmek@gmail.com'
-    const sellerName = 'beybuilmek'
+    const sellerEmail = 'beybuilmek@gmail.com';
+    const sellerName = 'beybuilmek';
 
     const messageForSeller = orderDetailTemplateForSeller(
       userShippingInfo,
       orderInfo,
       orderProducts
-    )
+    );
 
     await brevoEmailSender({
       email: sellerEmail,
       subject: 'Beybuilmek Sipariş Verildi.',
       message: messageForSeller,
       name: sellerName,
-    })
+    });
 
-    res.status(200).json({ success: true })
-  } catch (error) {
-    console.log('Error => ', error)
-    res.status(400).send(`Webhook Error: ${error.message}`)
+    res.status(200).json({ success: true });
+  } else {
+    res.status(400).json({ success: false, message: 'Payment failed' });
   }
-})
+});
 
-// import catchAsyncErrors from '../middlewares/catchAsyncErrors.js'
-// import Order from '../models/order.js'
-// import Product from '../models/product.js'
-// import User from '../models/user.js'
-// import axios from 'axios'
-// import brevoEmailSender from '../emails/brevoEmailSender.js'
-// import { orderDetailTemplateForCustomer } from '../emails/emailTemplates/orderDetailTemplateForCustomer.js'
-// import { orderDetailTemplateForSeller } from '../emails/emailTemplates/orderDetailTemplateForSeller.js'
 
-// const SHOPIER_API_URL = 'https://www.shopier.com/ShowProduct/api_pay4.php'
-// const SHOPIER_API_USER = process.env.SHOPIER_API_USER
-// const SHOPIER_API_PASSWORD = process.env.SHOPIER_API_PASSWORD
 
-// // Create Shopier checkout session => /api/v1/payment/checkout_session
-// export const shopierCheckoutSession = catchAsyncErrors(
-//   async (req, res, next) => {
-//     const body = req.body
 
-//     const errors = []
 
-//     // 2. Adım: Sipariş Edilen Ürünleri Kontrol Etme
-//     for (const item of body.orderItems) {
-//       const product = await Product.findOne({
-//         _id: item.product,
-//         'colors.productColorID': item.productColorID,
-//       })
 
-//       if (!product) {
-//         errors.push({
-//           msg: `Ürün bulunamadı: ${item.name}`,
-//           color: '',
-//           productColorID: item.productColorID,
-//         })
 
-//         continue // Bu ürün için işlemi atla ve bir sonraki ürüne geç
-//       }
 
-//       const color = product.colors.find(
-//         (color) => color.productColorID === item.productColorID
-//       )
 
-//       if (color.colorStock < item.amount) {
-//         errors.push({
-//           msg: `Stokta yeterli miktarda ürün yok: ${item.name}`,
-//           color: color.color,
-//           productColorID: item.productColorID,
-//         })
-//       }
-//     }
 
-//     if (errors.length > 0) {
-//       return res.status(400).json({ success: false, errors })
-//     }
 
-//     const totalAmount = body.orderItems.reduce(
-//       (acc, item) => acc + item.price * item.amount,
-//       0
-//     )
 
-//     const shippingInfo = body?.shippingInfo
-//     const shippingInvoiceInfo = body?.shippingInvoiceInfo
-//     const shippingInvoiceInfoString = JSON.stringify(shippingInvoiceInfo)
 
-//     const requestData = {
-//       API_key: SHOPIER_API_USER,
-//       API_secret: SHOPIER_API_PASSWORD,
-//       platform_order_id: req.user._id.toString(),
-//       total_amount: totalAmount,
-//       currency: 'TRY',
-//       customer_email: req.user.email,
-//       customer_first_name: shippingInfo.userName,
-//       customer_last_name: shippingInfo.userName,
-//       customer_address: shippingInfo.address,
-//       customer_city: shippingInfo.city,
-//       customer_country: shippingInfo.country,
-//       customer_phone: shippingInfo.phoneNo,
-//       customer_zip_code: shippingInfo.zipCode,
-//       success_url: `${process.env.FRONTEND_URL}/me/orders/shopier-success`,
-//       fail_url: `${process.env.FRONTEND_URL}`,
-//     }
 
-//     try {
-//       const response = await axios.post(SHOPIER_API_URL, requestData, {
-//         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-//       })
 
-//       if (response.data) {
-//         console.log('Shopier response data:', response.data) // Hata ayıklama için log ekleyin
-//         res.status(200).send(response.data)
-//       } else {
-//         res.status(500).json({
-//           success: false,
-//           message: 'Shopier ödeme bağlantısı oluşturulamadı.',
-//         })
-//       }
-//     } catch (error) {
-//       console.error(
-//         'Shopier API Error: ',
-//         error.response ? error.response.data : error.message
-//       ) // Hata ayıklama için logla
-//       res.status(500).json({ success: false, message: error.message })
-//     }
-//   }
-// )
 
-// // Webhook for Shopier => /api/v1/payment/webhook
-// export const shopierWebhook = catchAsyncErrors(async (req, res, next) => {
-//   try {
-//     const { status, platform_order_id, payment_id, total_amount } = req.body
 
-//     if (status !== 'success') {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: 'Payment not successful' })
-//     }
 
-//     const orderItems = JSON.parse(req.body.order_items)
-//     const user = platform_order_id
 
-//     const totalAmount = parseFloat(total_amount)
-//     const taxAmount = totalAmount * 0.08 // Assuming 8% tax
-//     const shippingAmount = req.body.shipping_amount || 0
-//     const itemsPrice = totalAmount - taxAmount - shippingAmount
 
-//     const shippingInfo = {
-//       address: req.body.customer_address,
-//       city: req.body.customer_city,
-//       phoneNo: req.body.customer_phone,
-//       zipCode: req.body.customer_zip_code,
-//       country: req.body.customer_country,
-//       userName:
-//         req.body.customer_first_name + ' ' + req.body.customer_last_name,
-//     }
 
-//     const paymentInfo = {
-//       id: payment_id,
-//       status: status,
-//     }
-
-//     const orderData = {
-//       shippingInfo,
-//       orderItems,
-//       itemsPrice,
-//       taxAmount,
-//       shippingAmount,
-//       totalAmount,
-//       paymentInfo,
-//       paymentMethod: 'Card',
-//       user,
-//     }
-
-//     const order = await Order.create(orderData)
-
-//     // Sipariş oluşturulduktan sonra stok ve renk stok güncelleme işlemleri
-//     for (const item of order.orderItems) {
-//       const product = await Product.findById(item.product)
-
-//       if (product) {
-//         for (const colorItem of item.colors) {
-//           const productColor = product.colors.find(
-//             (color) => color.color === colorItem.color
-//           )
-
-//           if (productColor) {
-//             productColor.colorStock -= item.amount
-//           }
-//         }
-
-//         product.stock -= item.amount
-
-//         await Product.findByIdAndUpdate(
-//           item.product,
-//           { $set: { stock: product.stock, colors: product.colors } },
-//           { new: true, runValidators: true }
-//         )
-//       }
-//     }
-
-//     // SEND EMAIL TO USER
-
-//     const orderProducts = order.orderItems
-//     const orderInfo = {
-//       itemsPrice: order?.orderItems
-//         ?.reduce((acc, item) => acc + item.price * item.amount, 0)
-//         .toFixed(2),
-//       taxAmount: order.taxAmount,
-//       shippingAmount: order.shippingAmount,
-//       totalAmount: order.totalAmount,
-//       orderNumber: order._id,
-//       paymentMethod: order.paymentMethod,
-//     }
-
-//     const userShippingInfo = order.shippingInfo
-
-//     const message = orderDetailTemplateForCustomer(
-//       userShippingInfo,
-//       orderInfo,
-//       orderProducts
-//     )
-
-//     const userInfo = await User.findOne({ _id: user })
-
-//     await brevoEmailSender({
-//       email: userInfo.email,
-//       subject: 'Beybuilmek Sipariş Verildi.',
-//       message,
-//       name: userInfo.name,
-//     })
-
-//     // SEND EMAIL TO SELLER
-
-//     const sellerEmail = 'beybuilmek@gmail.com'
-//     const sellerName = 'beybuilmek'
-
-//     const messageForSeller = orderDetailTemplateForSeller(
-//       userShippingInfo,
-//       orderInfo,
-//       orderProducts
-//     )
-
-//     await brevoEmailSender({
-//       email: sellerEmail,
-//       subject: 'Beybuilmek Sipariş Verildi.',
-//       message: messageForSeller,
-//       name: sellerName,
-//     })
-
-//     res.status(200).json({ success: true })
-//   } catch (error) {
-//     console.log('Error => ', error)
-//     res.status(400).send(`Webhook Error: ${error.message}`)
-//   }
-// })
 
 // import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
 // import Order from '../models/order.js';
