@@ -39,7 +39,7 @@ app.use(
 )
 
 // CORS Middleware
-const allowedOrigins = ['http://localhost:5173','https://beybushop.onrender.com','https://aydinhome.store']
+const allowedOrigins = ['http://localhost:5173','https://beybushop.onrender.com','https://www.aydinhome.store']
 const options = {
   origin: (origin, callback) => {
     if (allowedOrigins.includes(origin) || !origin) {
