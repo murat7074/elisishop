@@ -1,8 +1,4 @@
-
-
-import express from 'express';
 import axios from 'axios';
-import bodyParser from 'body-parser';
 import crypto from 'crypto';
 import catchAsyncErrors from '../middlewares/catchAsyncErrors.js';
 import Order from '../models/order.js';
@@ -11,7 +7,6 @@ import User from '../models/user.js';
 import brevoEmailSender from '../emails/brevoEmailSender.js';
 import { orderDetailTemplateForCustomer } from '../emails/emailTemplates/orderDetailTemplateForCustomer.js';
 import { orderDetailTemplateForSeller } from '../emails/emailTemplates/orderDetailTemplateForSeller.js';
-
 
 const merchant_id = process.env.PAYTR_MERCHANT_ID; // PayTR'dan alınan merchant id
 const merchant_key = process.env.PAYTR_MERCHANT_KEY; // PayTR'dan alınan merchant key
@@ -189,7 +184,7 @@ const getOrderItems = async (items) => {
         product: item.productId,
         name: item.name,
         price: item.price / 100,
-        amount: item.amount,
+        amounturl: process.env.BACKEND_URL,
         image: item.image,
         colors: item.colors,
       });
